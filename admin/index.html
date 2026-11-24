@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Panel</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#0b1020;color:#e8eaf6}
+.wrap{max-width:900px;margin:0 auto;padding:24px}
+.card{background:#151b33;border:1px solid #2a335a;border-radius:12px;padding:16px;margin:16px 0}
+input,textarea{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:1px solid #2a335a;background:#0b1020;color:#fff}
+button{padding:10px 16px;border:0;border-radius:8px;background:#3b82f6;color:#fff;cursor:pointer;margin:4px}
+button.danger{background:#e53935}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.item{border-top:1px solid #2a335a;padding:10px 0}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Admin Panel</h1>
+<div id="auth" class="card">
+<h3>Login</h3>
+<input id="email" type="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button id="login">Login</button>
+<p id="authMsg"></p>
+</div>
+<div id="panel" class="hidden">
+<button id="logout">Logout</button>
+<div class="card">
+<h3>Add Project</h3>
+<input id="ptitle" placeholder="Title">
+<textarea id="pdesc" placeholder="Description"></textarea>
+<input id="plink" placeholder="Link">
+<button id="addProject">Add</button>
+</div>
+<div class="card">
+<h3>Projects</h3>
+<div id="projects"></div>
+</div>
+<div class="card">
+<h3>Contact Messages</h3>
+<div id="messages"></div>
+</div>
+</div>
+</div>
+<script>
+const supabase = window.supabase.createClient('https://qiwplbvrbhvgojtcckug.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpd3BsYnZyYmh2Z29qdGNja3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0ODIwODIsImV4cCI6MjExMTA1ODA4Mn0.anoP9Qo0ulM65M7LRD2NlUnYL7pcuI-jqhdw_SgIWnQ');
+const auth=document.getElementById('auth'),panel=document.getElementById('panel'),authMsg=document.getElementById('authMsg');
+async function check(){const{data:{session}}=await supabase.auth.getSession();if(session){auth.classList.add('hidden');panel.classList.remove('hidden');load();}else{auth.classList.remove('hidden');panel.classList.add('hidden');}}
+document.getElementById('login').onclick=async()=>{const{error}=await supabase.auth.signInWithPassword({email:document.getElementById('email').value,password:document.getElementById('password').value});if(error)authMsg.textContent=error.message;else check();};
+document.getElementById('logout').onclick=async()=>{await supabase.auth.signOut();check();};
+async function load(){const{data:projects}=await supabase.from('projects').select('*').order('created_at',{ascending:false});document.getElementById('projects').innerHTML=(projects||[]).map(p=>`<div class="item"><b>${p.title}</b><p>${p.description||''}</p>${p.link?`<a href="${p.link}" target="_blank">Link</a>`:''}<br><button class="danger" data-id="${p.id}">Delete</button></div>`).join('');document.querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{await supabase.from('projects').delete().eq('id',b.dataset.id);load();});
+const{data:msgs}=await supabase.from('messages').select('*').order('created_at',{ascending:false});document.getElementById('messages').innerHTML=(msgs||[]).map(m=>`<div class="item"><b>${m.name}</b> <small>${m.email||''}</small><p>${m.message}</p></div>`).join('');}
+document.getElementById('addProject').onclick=async()=>{await supabase.from('projects').insert({title:document.getElementById('ptitle').value,description:document.getElementById('pdesc').value,link:document.getElementById('plink').value});document.getElementById('ptitle').value='';document.getElementById('pdesc').value='';document.getElementById('plink').value='';load();};
+check();
+</script>
+</body>
+</html>
