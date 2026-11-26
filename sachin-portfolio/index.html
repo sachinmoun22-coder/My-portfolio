@@ -187,7 +187,8 @@ footer{animation:fadeUp 1s 1.2s both}
 </div></section>
 <footer>© 2026 Sachin · Digital Marketing with AI</footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
 var cur=document.getElementById('cur'),mx=0,my=0,cx=-50,cy=-50,px=0,py=0;
@@ -309,10 +310,11 @@ if(!n||!m){msg('Please enter your name and message.',1);return null}
 if(e&&!/^\S+@\S+\.\S+$/.test(e)){msg('Please enter a valid email.',1);return null}
 return {n:n,e:e,m:m,t:'Hi Sachin, I am '+n+(e?' ('+e+')':'')+'.\n\n'+m}}
 function go(u){var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}
-cf.addEventListener('submit',function(ev){ev.preventDefault();var d=data();if(!d)return;
-go('mailto:sachinmoun5310@gmail.com?subject='+encodeURIComponent('Portfolio enquiry from '+d.n)+'&body='+encodeURIComponent(d.t));msg('Opening your email app. Press send there to deliver your message.')});
+cf.addEventListener('submit',async function(ev){ev.preventDefault();var d=data();if(!d)return;var sb=window.supabase.createClient(window.PF_CONFIG.url,window.PF_CONFIG.key);try{var r=await sb.from('messages').insert({name:d.n,email:d.e||null,message:d.m});if(r.error)throw r.error;msg('Message sent! Thank you.')}catch(err){go('mailto:sachinmoun5310@gmail.com?subject='+encodeURIComponent('Portfolio enquiry from '+d.n)+'&body='+encodeURIComponent(d.t));msg('Opening your email app. Press send there to deliver your message.')}});
 document.getElementById('wa').addEventListener('click',function(){var d=data();if(!d)return;go('https://wa.me/918950985074?text='+encodeURIComponent(d.t));msg('Opening WhatsApp...')});
 })();
 </script>
-</body>
+<script>
+(function(){var sb=window.supabase.createClient(window.PF_CONFIG.url,window.PF_CONFIG.key);sb.from('projects').select('*').eq('visible',true).order('sort_order').then(function(r){if(r.error||!r.data)return;var w=document.querySelector('.work');if(!w)return;w.textContent='';r.data.forEach(function(p){var card=document.createElement('div');card.className='card';var img=document.createElement('img');if(p.image_url){img.src=p.image_url;img.style.width='100%';img.style.borderRadius='12px';card.appendChild(img)}var h=document.createElement('h3');h.textContent=p.title;card.appendChild(h);var desc=document.createElement('p');desc.textContent=p.description;card.appendChild(desc);if(p.link){var a=document.createElement('a');a.className='btn';a.href=p.link;a.target='_blank';a.rel='noopener';a.textContent='Open';card.appendChild(a)}w.appendChild(card)})})})();
+</script>
 </html>
