@@ -1,0 +1,93 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../supabase'
+import { Icon, ErrorBanner, Spinner, Field, inputClass } from '../components/ui'
+
+const keys = ['hero_name', 'hero_title', 'contact_email', 'contact_phone', 'footer_text']
+
+export default function Settings({ user, notify }) {
+  const [email, setEmail] = useState(user.email || '')
+  const [content, setContent] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = async () => {
+    try {
+      const { data, error } = await supabase.from('site_content').select('key,value')
+      if (error) throw error
+      setContent(Object.fromEntries((data || []).map(row => [row.key, row.value || ''])))
+      setError('')
+    } catch (err) {
+      console.error('Settings load failed:', err)
+      setError(err.message || 'Could not load settings.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const set = (key, value) => setContent(current => ({ ...current, [key]: value }))
+
+  const saveEmail = async e => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      if (!email.trim()) throw new Error('Email is required')
+      const { error } = await supabase.auth.updateUser({ email: email.trim() })
+      if (error) throw error
+      notify('Confirmation sent to your new email')
+      setError('')
+    } catch (err) {
+      console.error('Email update failed:', err)
+      notify(err.message || 'Could not update email', 'error')
+      setError(err.message || 'Could not update email')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveContent = async e => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      const payload = keys.map(key => ({ key, value: content[key] || '' }))
+      const { error } = await supabase.from('site_content').upsert(payload)
+      if (error) throw error
+      notify('Profile saved')
+      setError('')
+    } catch (err) {
+      console.error('Profile save failed:', err)
+      notify(err.message || 'Could not save profile', 'error')
+      setError(err.message || 'Could not save profile')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-6"><h2 className="text-2xl font-bold text-white">Settings</h2><p className="mt-1 text-sm text-slate-400">Manage your admin account and the content shown on your site.</p></div>
+      <ErrorBanner message={error}/>
+      {loading ? <Spinner label="Loading settings..."/> : (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <form onSubmit={saveEmail} className="space-y-4 rounded-2xl border border-white/10 bg-[#101a30] p-5">
+            <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300"><Icon name="settings" className="w-5 h-5"/></span><div><h3 className="font-semibold text-white">Admin account</h3><p className="text-xs text-slate-400">Login email</p></div></div>
+            <Field label="Admin email"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass}/></Field>
+            <p className="text-xs leading-relaxed text-slate-500">Supabase sends a confirmation link when you change your email. Update <code className="rounded bg-white/5 px-1">VITE_ADMIN_EMAIL</code> in .env too.</p>
+            <button disabled={busy} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50">Update email</button>
+          </form>
+          <form onSubmit={saveContent} className="space-y-4 rounded-2xl border border-white/10 bg-[#101a30] p-5">
+            <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300"><Icon name="projects" className="w-5 h-5"/></span><div><h3 className="font-semibold text-white">Public profile</h3><p className="text-xs text-slate-400">Shown on your portfolio site</p></div></div>
+            <Field label="Name"><input value={content.hero_name || ''} onChange={e => set('hero_name', e.target.value)} className={inputClass}/></Field>
+            <Field label="Tagline"><input value={content.hero_title || ''} onChange={e => set('hero_title', e.target.value)} className={inputClass}/></Field>
+            <Field label="Contact email"><input value={content.contact_email || ''} onChange={e => set('contact_email', e.target.value)} className={inputClass}/></Field>
+            <Field label="Contact phone"><input value={content.contact_phone || ''} onChange={e => set('contact_phone', e.target.value)} className={inputClass}/></Field>
+            <Field label="Footer text"><input value={content.footer_text || ''} onChange={e => set('footer_text', e.target.value)} className={inputClass}/></Field>
+            <button disabled={busy} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50">Save profile</button>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}

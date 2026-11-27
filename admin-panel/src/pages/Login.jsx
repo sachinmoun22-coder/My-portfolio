@@ -8,7 +8,8 @@ export default function Login(){
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white">
       <form onSubmit={submit} className="bg-gray-900 p-8 rounded-xl w-96 space-y-4 border border-gray-800">
-        <h1 className="text-2xl font-bold text-cyan-400">Admin Login</h1>
+        <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Admin Panel</p>
+        <h1 className="text-2xl font-bold text-cyan-400">Sachin Moun</h1>
         <input className="w-full p-2 rounded bg-gray-800 border border-gray-700" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/>
         <input className="w-full p-2 rounded bg-gray-800 border border-gray-700" type="password" placeholder="Password" value={pass} onChange={e=>setPass(e.target.value)}/>
         {err && <p className="text-red-400 text-sm">{err}</p>}

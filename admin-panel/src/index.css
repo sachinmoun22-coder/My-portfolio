@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root{color-scheme:dark}
+body{margin:0;background:#070b17}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:999px}
+::-webkit-scrollbar-track{background:transparent}
