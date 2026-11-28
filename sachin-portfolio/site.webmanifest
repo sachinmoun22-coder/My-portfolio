@@ -2,7 +2,7 @@
   "name": "Sachin Moun | Digital Marketing with AI Expert",
   "short_name": "Sachin Moun",
   "description": "Sachin Moun — Digital Marketing with AI expert. SEO, Social Media, Google & Meta Ads, AI automation.",
-  "start_url": "/",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#3b82f6",
