@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
-import { Icon, ErrorBanner, Spinner, Field, inputClass } from '../components/ui'
+import { ErrorBanner, Field, Icon, inputClass, Spinner } from '../components/ui'
 
 const keys = ['hero_name', 'hero_title', 'contact_email', 'contact_phone', 'footer_text']
 
@@ -67,24 +67,24 @@ export default function Settings({ user, notify }) {
 
   return (
     <div>
-      <div className="mb-6"><h2 className="text-2xl font-bold text-white">Settings</h2><p className="mt-1 text-sm text-slate-400">Manage your admin account and the content shown on your site.</p></div>
+      <div className="page-header"><div className="page-heading"><p className="eyebrow">Site</p><h2>Settings</h2><p>Manage your admin account and the content shown on your site.</p></div></div>
       <ErrorBanner message={error}/>
       {loading ? <Spinner label="Loading settings..."/> : (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <form onSubmit={saveEmail} className="space-y-4 rounded-2xl border border-white/10 bg-[#101a30] p-5">
-            <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300"><Icon name="settings" className="w-5 h-5"/></span><div><h3 className="font-semibold text-white">Admin account</h3><p className="text-xs text-slate-400">Login email</p></div></div>
+        <div className="settings-grid">
+          <form onSubmit={saveEmail} className="card settings-card">
+            <div className="settings-heading"><span className="settings-icon"><Icon name="settings" className="icon-20"/></span><div><h3>Admin account</h3><p>Login email</p></div></div>
             <Field label="Admin email"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass}/></Field>
-            <p className="text-xs leading-relaxed text-slate-500">Supabase sends a confirmation link when you change your email. Update <code className="rounded bg-white/5 px-1">VITE_ADMIN_EMAIL</code> in .env too.</p>
-            <button disabled={busy} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50">Update email</button>
+            <p className="settings-note">Supabase sends a confirmation link when you change your email. Update <code>VITE_ADMIN_EMAIL</code> in .env too.</p>
+            <div><button disabled={busy} className="button primary"><Icon name="check" className="icon-16"/>Update email</button></div>
           </form>
-          <form onSubmit={saveContent} className="space-y-4 rounded-2xl border border-white/10 bg-[#101a30] p-5">
-            <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300"><Icon name="projects" className="w-5 h-5"/></span><div><h3 className="font-semibold text-white">Public profile</h3><p className="text-xs text-slate-400">Shown on your portfolio site</p></div></div>
+          <form onSubmit={saveContent} className="card settings-card">
+            <div className="settings-heading"><span className="settings-icon"><Icon name="projects" className="icon-20"/></span><div><h3>Public profile</h3><p>Shown on your portfolio site</p></div></div>
             <Field label="Name"><input value={content.hero_name || ''} onChange={e => set('hero_name', e.target.value)} className={inputClass}/></Field>
             <Field label="Tagline"><input value={content.hero_title || ''} onChange={e => set('hero_title', e.target.value)} className={inputClass}/></Field>
             <Field label="Contact email"><input value={content.contact_email || ''} onChange={e => set('contact_email', e.target.value)} className={inputClass}/></Field>
             <Field label="Contact phone"><input value={content.contact_phone || ''} onChange={e => set('contact_phone', e.target.value)} className={inputClass}/></Field>
             <Field label="Footer text"><input value={content.footer_text || ''} onChange={e => set('footer_text', e.target.value)} className={inputClass}/></Field>
-            <button disabled={busy} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50">Save profile</button>
+            <div><button disabled={busy} className="button primary"><Icon name="check" className="icon-16"/>Save profile</button></div>
           </form>
         </div>
       )}

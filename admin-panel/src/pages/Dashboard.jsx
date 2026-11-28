@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Bell } from 'lucide-react'
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import Messages from './Messages'
 import Projects from './Projects'
 import Services from './Services'
 import Settings from './Settings'
-import { Icon, Toasts, ErrorBanner, EmptyState, Spinner } from '../components/ui'
+import { EmptyState, ErrorBanner, Icon, Spinner, Toasts } from '../components/ui'
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -15,24 +17,59 @@ const tabs = [
   { id: 'settings', label: 'Settings', icon: 'settings' }
 ]
 
+const navSections = [
+  { label: 'MAIN', items: [tabs[0]] },
+  { label: 'CONTENT', items: [tabs[1], tabs[2]] },
+  { label: 'INBOX', items: [tabs[3]] },
+  { label: 'SITE', items: [tabs[4]] }
+]
+
+const chartColors = ['#22b8f0', '#10c18b', '#a78bdb', '#ff9472', '#f59e0b', '#64748b']
+
+function relativeTime(value) {
+  if (!value) return '—'
+  const diff = Date.now() - new Date(value).getTime()
+  if (Number.isNaN(diff)) return '—'
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(value).toLocaleDateString()
+}
+
+function monthKeys() {
+  return Array.from({ length: 12 }, (_, i) => {
+    const date = new Date()
+    date.setDate(1)
+    date.setMonth(date.getMonth() - (11 - i))
+    return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`, label: date.toLocaleString('en-US', { month: 'short' }) }
+  })
+}
+
 function AccountCard({ user, logout }) {
   return (
-    <div className="mt-auto border-t border-white/10 px-1 pt-4">
-      <p className="truncate text-sm text-slate-400" title={user.email}>{user.email}</p>
-      <button onClick={logout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 transition hover:border-rose-400/40 hover:text-rose-200">
-        <Icon name="logout" className="w-4 h-4"/>Logout
-      </button>
+    <div className="sidebar-footer">
+      <span className="sidebar-email" title={user.email}>{user.email}</span>
+      <button onClick={logout} className="logout-button"><Icon name="logout" className="icon-18"/><span>Logout</span></button>
     </div>
   )
 }
 
-function NavItems({ tab, go, unread, mobile }) {
-  return tabs.map(t => (
-    <button key={t.id} onClick={() => go(t.id)} className={`group relative flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${mobile ? 'whitespace-nowrap' : 'w-full'} ${tab === t.id ? 'bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-400/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-      <Icon name={t.icon} className="w-[18px] h-[18px]"/>
-      <span>{t.label}</span>
-      {t.id === 'messages' && unread > 0 && <span className="ml-auto min-w-5 rounded-full bg-cyan-400 px-1.5 text-center text-[11px] font-bold leading-5 text-slate-950">{unread}</span>}
-    </button>
+function NavItems({ tab, go, unread, closeDrawer }) {
+  return navSections.map(section => (
+    <div className="sidebar-group" key={section.label}>
+      <p className="sidebar-group-title">{section.label}</p>
+      {section.items.map(item => (
+        <button key={item.id} onClick={() => { go(item.id); closeDrawer?.() }} className={`nav-item ${tab === item.id ? 'active' : ''}`}>
+          <Icon name={item.icon} className="icon-18 nav-item-icon"/>
+          <span className="nav-label">{item.label}</span>
+          {item.id === 'messages' && unread > 0 && <span className="nav-badge">{unread}</span>}
+        </button>
+      ))}
+    </div>
   ))
 }
 
@@ -44,11 +81,15 @@ export default function Dashboard({ user }) {
     return tabs.some(t => t.id === value) ? value : 'dashboard'
   }
   const tab = pathTab()
-  const [counts, setCounts] = useState({ messages: 0, unread: 0, projects: 0, services: 0 })
-  const [latest, setLatest] = useState([])
+  const [counts, setCounts] = useState({ messages: 0, unread: 0, week: 0, projects: 0, visible: 0, services: 0 })
+  const [projectsList, setProjectsList] = useState([])
+  const [monthly, setMonthly] = useState([])
+  const [categories, setCategories] = useState([])
+  const [activity, setActivity] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [toasts, setToasts] = useState([])
+  const [collapsed, setCollapsed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const notify = (message, type = 'success') => {
@@ -64,30 +105,77 @@ export default function Dashboard({ user }) {
     try {
       const [m, p, s] = await Promise.all([
         supabase.from('messages').select('id,name,email,message,is_read,created_at').order('created_at', { ascending: false }),
-        supabase.from('projects').select('id'),
+        supabase.from('projects').select('id,title,category,visible,created_at,sort_order').order('created_at', { ascending: false }),
         supabase.from('services').select('id')
       ])
       const failed = [m, p, s].find(result => result.error)
       if (failed) throw failed.error
       const messages = m.data || []
-      setLatest(messages.slice(0, 5))
+      const projects = p.data || []
+      const services = s.data || []
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+      const months = monthKeys()
+      const categoryMap = new Map()
+      projects.forEach(row => {
+        const name = String(row.category || 'Other').trim() || 'Other'
+        categoryMap.set(name, (categoryMap.get(name) || 0) + 1)
+      })
+
       setCounts({
         messages: messages.length,
         unread: messages.filter(row => !row.is_read).length,
-        projects: (p.data || []).length,
-        services: (s.data || []).length
+        week: messages.filter(row => row.created_at && new Date(row.created_at).getTime() >= weekAgo).length,
+        projects: projects.length,
+        visible: projects.filter(row => row.visible !== false).length,
+        services: services.length
       })
+      setProjectsList(projects.slice(0, 5))
+      setMonthly(months.map(month => ({
+        ...month,
+        messages: messages.filter(row => row.created_at && row.created_at.slice(0, 7) === month.key).length
+      })))
+      setCategories([...categoryMap].map(([name, value]) => ({ name, value })))
+      setActivity([
+        ...messages.slice(0, 6).map(row => ({
+          id: `message-${row.id}`,
+          icon: 'messages',
+          title: `New message from ${row.name || 'Anonymous'}`,
+          detail: row.email || 'Portfolio enquiry',
+          date: row.created_at
+        })),
+        ...projects.slice(0, 6).map(row => ({
+          id: `project-${row.id}`,
+          icon: 'projects',
+          title: `${row.visible === false ? 'Draft project' : 'Project published'}: ${row.title || 'Untitled'}`,
+          detail: row.category || 'Portfolio project',
+          date: row.created_at
+        }))
+      ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 6))
     } catch (err) {
       console.error('Dashboard load failed:', err)
       setError(err.message || 'Could not load dashboard data.')
-      setCounts({ messages: 0, unread: 0, projects: 0, services: 0 })
-      setLatest([])
+      setCounts({ messages: 0, unread: 0, week: 0, projects: 0, visible: 0, services: 0 })
+      setProjectsList([])
+      setMonthly([])
+      setCategories([])
+      setActivity([])
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') setMenuOpen(false) }
+    const onResize = () => { if (window.innerWidth >= 1024) setMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
 
   const logout = async () => {
     const { error } = await supabase.auth.signOut()
@@ -99,92 +187,146 @@ export default function Dashboard({ user }) {
     }
   }
 
+  const toggleSidebar = () => {
+    if (window.innerWidth < 1024) setMenuOpen(true)
+    else setCollapsed(current => !current)
+  }
+
   const stats = [
-    { label: 'Messages', value: counts.messages, icon: 'mail' },
-    { label: 'Unread', value: counts.unread, icon: 'unread' },
-    { label: 'Projects', value: counts.projects, icon: 'projects' },
-    { label: 'Services', value: counts.services, icon: 'services' }
+    { label: 'Total Messages', value: counts.messages, sub: `${counts.week} this week`, icon: 'messages', tone: 'green' },
+    { label: 'Unread', value: counts.unread, sub: 'Needs attention', icon: 'unread', tone: 'purple' },
+    { label: 'Projects', value: counts.projects, sub: `${counts.visible} visible`, icon: 'projects', tone: 'blue' },
+    { label: 'Services', value: counts.services, sub: 'Live on portfolio', icon: 'services', tone: 'orange' }
   ]
 
   return (
-    <div className="min-h-screen bg-[#070b17] text-slate-100">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-white/10 bg-[#0a1122] px-4 py-6 lg:flex">
-        <div className="mb-8 px-3">
-          <p className="text-lg font-bold tracking-tight text-white">Sachin Moun</p>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Admin panel</p>
+    <div className="admin-shell">
+      {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)}/>}
+      <aside className={`admin-sidebar ${collapsed ? 'collapsed' : ''} ${menuOpen ? 'open' : ''}`}>
+        <div className="sidebar-brand">
+          <span className="sidebar-logo">S</span>
+          <span className="sidebar-brand-text"><strong>Sachin Moun</strong><small>Admin panel</small></span>
         </div>
-        <nav className="flex flex-col gap-1.5"><NavItems tab={tab} go={go} unread={counts.unread}/></nav>
+        <nav className="sidebar-nav"><NavItems tab={tab} go={go} unread={counts.unread} closeDrawer={() => setMenuOpen(false)}/></nav>
         <AccountCard user={user} logout={logout}/>
       </aside>
 
-      <div className="lg:pl-60">
-        <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a1122]/95 backdrop-blur">
-          <nav className="flex gap-1.5 overflow-x-auto border-b border-white/[0.06] px-3 py-2.5 lg:hidden"><NavItems tab={tab} go={go} unread={counts.unread} mobile/></nav>
-          <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-cyan-300/80">Admin</p>
-              <h1 className="text-lg font-semibold capitalize text-white sm:text-xl">{tab}</h1>
-            </div>
-            <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="rounded-lg border border-white/10 p-2 text-slate-300 transition hover:bg-white/5 lg:hidden"><Icon name="menu" className="w-5 h-5"/></button>
+      <div className={`admin-main ${collapsed ? 'collapsed' : ''}`}>
+        <header className="admin-topbar">
+          <div className="topbar-left">
+            <button onClick={toggleSidebar} aria-label="Toggle sidebar" className="icon-button"><Icon name="menu" className="icon-20"/></button>
+            <div className="topbar-heading"><h1>{tab}</h1><p>Admin dashboard</p></div>
+          </div>
+          <div className="topbar-actions">
+            <button onClick={() => go('messages')} aria-label="Notifications" className="icon-button notification-button"><Bell className="icon-18"/>{counts.unread > 0 && <span className="notification-dot"/>}</button>
+            <div className="avatar" title={user.email}>{user.email?.[0] || 'A'}</div>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          <>
-            {tab === 'dashboard' && (
-              <div>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-white">Overview</h2>
-                  <p className="mt-1 text-sm text-slate-400">Welcome back. Here is what is happening on your portfolio.</p>
-                </div>
-                <ErrorBanner message={error}/>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                  {stats.map(s => (
-                    <div key={s.label} className="rounded-2xl border border-white/10 bg-[#101a30] p-4 shadow-lg shadow-black/20 sm:p-5">
-                      <div className="flex items-center justify-between text-slate-400"><span className="text-xs font-medium uppercase tracking-wider sm:text-sm">{s.label}</span><Icon name={s.icon} className="w-5 h-5 text-cyan-300/70"/></div>
-                      <p className="mt-3 text-3xl font-bold text-white">{loading ? '—' : s.value}</p>
-                    </div>
-                  ))}
-                </div>
-                <section className="mt-8 rounded-2xl border border-white/10 bg-[#101a30] p-5">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <h2 className="text-lg font-semibold text-white">Latest messages</h2>
-                    <button onClick={() => go('messages')} className="text-sm text-cyan-300 hover:text-cyan-200">View all →</button>
+        <main className="admin-content">
+          {tab === 'dashboard' && (
+            <div>
+              <div className="page-header">
+                <div className="page-heading"><p className="eyebrow">Overview</p><h2>Dashboard</h2><p>Welcome back. Here is what is happening on your portfolio.</p></div>
+              </div>
+              <ErrorBanner message={error}/>
+              <div className="stat-grid">
+                {stats.map(s => (
+                  <article key={s.label} className={`stat-card ${s.tone}`}>
+                    <div className="stat-top"><span className="stat-label">{s.label}</span><span className="stat-icon"><Icon name={s.icon} className="icon-20"/></span></div>
+                    <p className="stat-value">{loading ? '—' : s.value}</p>
+                    <span className="stat-sub">{s.sub}</span>
+                  </article>
+                ))}
+              </div>
+
+              <section className="dashboard-section chart-grid">
+                <div className="card chart-card">
+                  <div className="card-header"><div><h3 className="card-title">Messages Overview</h3><p className="card-subtitle">Enquiries received each month</p></div></div>
+                  <div className="chart-wrap">
+                    {loading ? <Spinner label="Loading chart..."/> : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={monthly} margin={{ top: 10, right: 12, left: -24, bottom: 0 }}>
+                          <defs><linearGradient id="messageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity={0.3}/><stop offset="100%" stopColor="#2563eb" stopOpacity={0.02}/></linearGradient></defs>
+                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false}/>
+                          <XAxis axisLine={false} dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false}/>
+                          <YAxis allowDecimals={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false}/>
+                          <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }}/>
+                          <Area dataKey="messages" dot={false} fill="url(#messageFill)" stroke="#2563eb" strokeWidth={2} type="monotone"/>
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
                   </div>
-                  {loading ? <Spinner label="Loading messages..."/> : latest.length === 0 ? <EmptyState text="No messages yet."/> : (
-                    <div className="space-y-2.5">
-                      {latest.map(m => (
-                        <button key={m.id} onClick={() => go('messages')} className="flex w-full items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-cyan-400/30">
-                          <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${m.is_read ? 'bg-slate-600' : 'bg-cyan-300'}`}/>
-                          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-white">{m.name || 'Anonymous'} <span className="font-normal text-slate-500">{m.email}</span></span><span className="mt-0.5 block truncate text-sm text-slate-400">{m.message}</span></span>
-                          <span className="shrink-0 text-xs text-slate-500">{m.created_at ? new Date(m.created_at).toLocaleDateString() : ''}</span>
-                        </button>
+                </div>
+
+                <div className="card chart-card">
+                  <div className="card-header"><div><h3 className="card-title">Projects by Category</h3><p className="card-subtitle">Distribution of your work</p></div></div>
+                  {loading ? <Spinner label="Loading chart..."/> : categories.length === 0 ? <div className="card-body"><EmptyState text="No projects yet."/></div> : (
+                    <>
+                      <div className="donut-wrap">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={categories} dataKey="value" innerRadius={60} nameKey="name" outerRadius={85} paddingAngle={3} stroke="none">
+                              {categories.map((entry, i) => <Cell key={entry.name} fill={chartColors[i % chartColors.length]}/>)}
+                            </Pie>
+                            <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }}/>
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="donut-center"><strong>{counts.projects}</strong><span>Projects</span></div>
+                      </div>
+                      <div className="donut-legend">
+                        {categories.map((entry, i) => <span className="legend-item" key={entry.name}><span className="legend-dot" style={{ background: chartColors[i % chartColors.length] }}/>{entry.name} · {entry.value}</span>)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </section>
+
+              <section className="dashboard-section lower-grid">
+                <div className="card">
+                  <div className="card-header"><div><h3 className="card-title">Recent Activity</h3><p className="card-subtitle">Latest messages and projects</p></div></div>
+                  {loading ? <Spinner label="Loading activity..."/> : activity.length === 0 ? <div className="card-body"><EmptyState text="No activity yet."/></div> : (
+                    <div className="activity-list">
+                      {activity.map(item => (
+                        <div className="activity-item" key={item.id}>
+                          <span className="activity-icon"><Icon name={item.icon} className="icon-18"/></span>
+                          <span className="activity-copy"><strong>{item.title}</strong><span>{item.detail}</span></span>
+                          <span className="activity-time">{relativeTime(item.date)}</span>
+                        </div>
                       ))}
                     </div>
                   )}
-                </section>
-              </div>
-            )}
-            {tab === 'projects' && <Projects notify={notify} onChange={load}/>}
-            {tab === 'services' && <Services notify={notify} onChange={load}/>}
-            {tab === 'messages' && <Messages notify={notify} onChange={load}/>}
-            {tab === 'settings' && <Settings user={user} notify={notify}/>}
-          </>
+                </div>
+
+                <div className="card">
+                  <div className="card-header"><div><h3 className="card-title">Latest Projects</h3><p className="card-subtitle">Recently added portfolio work</p></div><button onClick={() => go('projects')} className="link-button">View all →</button></div>
+                  {loading ? <Spinner label="Loading projects..."/> : projectsList.length === 0 ? <div className="card-body"><EmptyState text="No projects yet."/></div> : (
+                    <div className="table-wrap">
+                      <table className="data-table">
+                        <thead><tr><th>Project</th><th>Category</th><th>Status</th><th>Created</th></tr></thead>
+                        <tbody>
+                          {projectsList.map(row => (
+                            <tr key={row.id}>
+                              <td><span className="table-title">{row.title || 'Untitled'}</span></td>
+                              <td>{row.category || 'Other'}</td>
+                              <td><span className={`status-pill ${row.visible === false ? 'draft' : 'published'}`}>{row.visible === false ? 'Draft' : 'Published'}</span></td>
+                              <td>{row.created_at ? new Date(row.created_at).toLocaleDateString() : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+          {tab === 'projects' && <Projects notify={notify} onChange={load}/>}
+          {tab === 'services' && <Services notify={notify} onChange={load}/>}
+          {tab === 'messages' && <Messages notify={notify} onChange={load}/>}
+          {tab === 'settings' && <Settings user={user} notify={notify}/>}
         </main>
       </div>
-      {menuOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-slate-950/80" onClick={() => setMenuOpen(false)}/>
-          <aside className="absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col border-r border-white/10 bg-[#0a1122] px-4 py-6">
-            <div className="mb-8 flex items-start justify-between gap-3">
-              <div><p className="text-lg font-bold tracking-tight text-white">Sachin Moun</p><p className="text-xs uppercase tracking-[0.2em] text-slate-500">Admin panel</p></div>
-              <button onClick={() => setMenuOpen(false)} aria-label="Close menu" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/5 hover:text-white"><Icon name="close" className="w-4 h-4"/></button>
-            </div>
-            <nav className="flex flex-col gap-1.5"><NavItems tab={tab} go={next => { go(next); setMenuOpen(false) }} unread={counts.unread}/></nav>
-            <AccountCard user={user} logout={logout}/>
-          </aside>
-        </div>
-      )}
       <Toasts items={toasts}/>
     </div>
   )
